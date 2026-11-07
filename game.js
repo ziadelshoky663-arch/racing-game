@@ -10,7 +10,9 @@
     sound: document.querySelector("#soundBtn"), modes: [...document.querySelectorAll(".mode-card")]
   };
   document.querySelector("#enterGameBtn").addEventListener("click", () => {
-    document.querySelector("#welcomeScreen").hidden = true;
+    const welcomeScreen = document.querySelector("#welcomeScreen");
+    welcomeScreen.hidden = true;
+    welcomeScreen.style.display = "none";
   });
   const W = canvas.width, H = canvas.height;
   const track = { cx: W / 2, cy: H / 2 + 5, rx: 320, ry: 205, width: 112 };
