@@ -12,6 +12,7 @@ body { margin: 0; min-height: 100vh; background: radial-gradient(circle at 50% -
 button { font: inherit; }
 .game-shell { width: min(1120px, calc(100% - 28px)); margin: 0 auto; padding: 28px 0; }
 .welcome-screen { position: fixed; inset: 0; z-index: 10; display: grid; place-items: center; padding: 20px; background: radial-gradient(circle at 50% 20%, #263b60, #0c1220 70%); }
+.welcome-screen[hidden] { display: none; }
 .welcome-card { width: min(450px, 100%); padding: 42px 28px; border: 1px solid #3b4e6d; border-radius: 24px; background: #151e31ee; box-shadow: 0 25px 80px #0009; text-align: center; }
 .welcome-flag { margin-bottom: 12px; font-size: 58px; }
 .welcome-card h1 { margin: 10px 0 6px; line-height: 1.45; }
