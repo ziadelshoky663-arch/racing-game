@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>سباق السرعة</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <section id="welcomeScreen" class="welcome-screen">
+    <div class="welcome-card">
+      <div class="welcome-flag">🏁</div>
+      <p class="eyebrow">أهلاً وسهلاً</p>
+      <h1>أهلاً بيك في<br><span>مجموعة فرعون</span></h1>
+      <p>الخاصة بـ <strong>زياد الشوكي</strong></p>
+      <button id="enterGameBtn" class="primary-btn" type="button">ابدأ اللعب 🚗</button>
+    </div>
+  </section>
+  <main class="game-shell">
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">حلبة المدينة الليلية</p>
+        <h1>سباق السرعة <span>🏁</span></h1>
+      </div>
+      <div class="top-actions">
+        <button id="pauseBtn" class="icon-btn" type="button" aria-label="إيقاف مؤقت">Ⅱ</button>
+        <button id="soundBtn" class="icon-btn" type="button" aria-label="الصوت">🔊</button>
+      </div>
+    </header>
+
+    <section class="mode-picker" aria-label="اختيار وضع اللعب">
+      <button class="mode-card active" data-mode="race" type="button">
+        <span class="mode-icon">🏆</span>
+        <span><b>سباق حقيقي</b><small>نافس 4 سيارات وأكمل 3 لفات</small></span>
+      </button>
+      <button class="mode-card" data-mode="training" type="button">
+        <span class="mode-icon">🎯</span>
+        <span><b>وضع التدريب</b><small>تدرّب على القيادة وتجاوز الحواجز</small></span>
+      </button>
+    </section>
+
+    <section class="hud">
+      <div><small>اللفة</small><strong id="lapValue">1 / 3</strong></div>
+      <div><small>المركز</small><strong id="positionValue">1 / 5</strong></div>
+      <div><small>الوقت</small><strong id="timeValue">00:00.0</strong></div>
+      <div class="boost-box"><small>نيترو</small><div class="boost-track"><i id="boostBar"></i></div></div>
+    </section>
+
+    <section class="track-wrap">
+      <canvas id="gameCanvas" width="960" height="600" aria-label="لعبة سباق سيارات"></canvas>
+      <div id="countdown" class="countdown" hidden>3</div>
+      <div id="message" class="game-message" hidden></div>
+      <div class="controls-hint">تحرك: الأسهم أو WASD <span>•</span> نيترو: Space <span>•</span> إيقاف: P</div>
+      <div class="touch-controls" aria-label="أزرار التحكم للموبايل">
+        <button class="touch-button" data-key="ArrowLeft" type="button">◀</button>
+        <button class="touch-button gas" data-key="ArrowUp" type="button">▲</button>
+        <button class="touch-button nitro" data-key=" " type="button">N</button>
+        <button class="touch-button" data-key="ArrowRight" type="button">▶</button>
+      </div>
+    </section>
+
+    <footer class="bottom-panel">
+      <div class="legend"><span class="dot player"></span> أنت <span class="dot rival"></span> منافسون <span class="dot cone"></span> حواجز</div>
+      <button id="restartBtn" class="primary-btn" type="button">ابدأ السباق</button>
+    </footer>
+  </main>
+  <script src="game.js"></script>
+</body>
+</html>
