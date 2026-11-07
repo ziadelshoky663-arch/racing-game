@@ -1,190 +1,37 @@
 (() => {
   "use strict";
-  const canvas = document.querySelector("#gameCanvas");
-  const ctx = canvas.getContext("2d");
-  const ui = {
-    lap: document.querySelector("#lapValue"), position: document.querySelector("#positionValue"),
-    time: document.querySelector("#timeValue"), boost: document.querySelector("#boostBar"),
-    countdown: document.querySelector("#countdown"), message: document.querySelector("#message"),
-    restart: document.querySelector("#restartBtn"), pause: document.querySelector("#pauseBtn"),
-    sound: document.querySelector("#soundBtn"), modes: [...document.querySelectorAll(".mode-card")]
-  };
-  document.querySelector("#enterGameBtn").addEventListener("click", () => {
-    const welcomeScreen = document.querySelector("#welcomeScreen");
-    welcomeScreen.hidden = true;
-    welcomeScreen.style.display = "none";
-  });
-  const W = canvas.width, H = canvas.height;
-  const track = { cx: W / 2, cy: H / 2 + 5, rx: 320, ry: 205, width: 112 };
-  const keys = new Set();
-  let mode = "race", running = false, paused = false, countdown = 0, last = 0, elapsed = 0, soundOn = true, animation;
-  let player, cars = [], obstacles = [];
-
-  const clamp = (n, min, max) => Math.max(min, Math.min(max, n));
-  const formatTime = (ms) => {
-    const seconds = ms / 1000;
-    return `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${(seconds % 60).toFixed(1).padStart(4, "0")}`;
-  };
-  const pointOnTrack = (angle, lane = 0) => ({
-    x: track.cx + (track.rx + lane) * Math.cos(angle),
-    y: track.cy + (track.ry + lane * .64) * Math.sin(angle)
-  });
-  const angleOf = (car) => Math.atan2((car.y - track.cy) / track.ry, (car.x - track.cx) / track.rx);
-  const progressOf = (car) => {
-    let angle = angleOf(car);
-    if (angle < -Math.PI / 2) angle += Math.PI * 2;
-    return angle < -Math.PI / 2 ? angle + Math.PI * 2 : angle;
-  };
-  function makeCar(color, angle, lane, ai = false) {
-    const p = pointOnTrack(angle, lane);
-    return { x: p.x, y: p.y, angle: angle + Math.PI / 2, color, lane, ai, speed: ai ? 85 + Math.random() * 22 : 0, progress: 0, lap: 0, boost: 100, width: 20, height: 37 };
-  }
-  function reset() {
-    player = makeCar("#45d9e8", -Math.PI / 2, 0);
-    cars = [player, makeCar("#ff597c", -Math.PI / 2 - .18, -27, true), makeCar("#b26dff", -Math.PI / 2 - .36, 27, true), makeCar("#f3e85e", -Math.PI / 2 - .53, -27, true), makeCar("#62e58c", -Math.PI / 2 - .72, 27, true)];
-    obstacles = [];
-    if (mode === "training") {
-      [-1.12, -.37, .42, 1.14, 2.02, 2.72].forEach((a, i) => obstacles.push({ ...pointOnTrack(a, i % 2 ? 28 : -28), angle: a }));
-    }
-    elapsed = 0; countdown = 3; running = false; paused = false;
-    ui.message.hidden = true; ui.countdown.hidden = false; ui.restart.textContent = "إعادة البدء";
-    updateHud();
-  }
-  function updateHud() {
-    const completed = Math.min(3, player ? player.lap + 1 : 1);
-    ui.lap.textContent = mode === "race" ? `${completed} / 3` : "تدريب";
-    const sorted = [...cars].sort((a, b) => (b.lap * 6.28 + progressOf(b)) - (a.lap * 6.28 + progressOf(a)));
-    ui.position.textContent = mode === "race" ? `${sorted.indexOf(player) + 1} / 5` : "—";
-    ui.time.textContent = formatTime(elapsed);
-    ui.boost.style.width = `${player ? player.boost : 100}%`;
-  }
-  function startCountdown() {
-    const tick = () => {
-      ui.countdown.textContent = countdown > 0 ? countdown : "انطلق!";
-      if (countdown < 0) { ui.countdown.hidden = true; running = true; last = performance.now(); return; }
-      countdown -= 1; setTimeout(tick, 700);
-    };
-    tick();
-  }
-  function update(dt) {
-    if (!running || paused) return;
-    elapsed += dt * 1000;
-    const accelerating = keys.has("ArrowUp") || keys.has("w");
-    const braking = keys.has("ArrowDown") || keys.has("s");
-    const turning = (keys.has("ArrowLeft") || keys.has("a") ? -1 : 0) + (keys.has("ArrowRight") || keys.has("d") ? 1 : 0);
-    const nitro = keys.has(" ") && player.boost > 0 && accelerating;
-    const target = accelerating ? (nitro ? 270 : 190) : braking ? -75 : 0;
-    player.speed += (target - player.speed) * Math.min(1, dt * 4);
-    if (nitro) player.boost = Math.max(0, player.boost - dt * 26); else player.boost = Math.min(100, player.boost + dt * 6);
-    player.angle += turning * dt * (1.9 + Math.abs(player.speed) / 180);
-    player.x += Math.cos(player.angle - Math.PI / 2) * player.speed * dt;
-    player.y += Math.sin(player.angle - Math.PI / 2) * player.speed * dt;
-    keepOnTrack(player);
-    moveAi(dt);
-    if (mode === "training") checkObstacles();
-    checkLap(player);
-    updateHud();
-  }
-  function keepOnTrack(car) {
-    const nx = (car.x - track.cx) / track.rx, ny = (car.y - track.cy) / track.ry;
-    const distance = Math.sqrt(nx * nx + ny * ny);
-    if (distance > 1.13) { car.x -= Math.cos(car.angle - Math.PI / 2) * car.speed * .04; car.y -= Math.sin(car.angle - Math.PI / 2) * car.speed * .04; car.speed *= .82; }
-  }
-  function moveAi(dt) {
-    cars.slice(1).forEach(car => {
-      const speed = car.speed * (mode === "training" ? .75 : 1);
-      const angle = angleOf(car) + speed / track.rx * dt;
-      const p = pointOnTrack(angle, car.lane);
-      car.x = p.x; car.y = p.y; car.angle = angle + Math.PI / 2; car.progress += speed * dt / 100;
-      checkLap(car);
-    });
-  }
-  function checkLap(car) {
-    const progress = progressOf(car);
-    if (car.lastProgress !== undefined && progress < 1 && car.lastProgress > 5) car.lap += 1;
-    car.lastProgress = progress;
-    if (car === player && mode === "race" && car.lap >= 3) finish();
-  }
-  function checkObstacles() {
-    obstacles.forEach(obstacle => {
-      if (Math.hypot(player.x - obstacle.x, player.y - obstacle.y) < 27) {
-        player.speed *= .45; player.boost = Math.max(0, player.boost - 12);
-        obstacle.hit = true; setTimeout(() => { obstacle.hit = false; }, 250);
-      }
-    });
-  }
-  function finish() {
-    running = false; ui.message.hidden = false;
-    const sorted = [...cars].sort((a, b) => (b.lap * 6.28 + progressOf(b)) - (a.lap * 6.28 + progressOf(a)));
-    ui.message.innerHTML = `🏁 انتهى السباق!<small>أنهيت السباق في المركز ${sorted.indexOf(player) + 1} — ${formatTime(elapsed)}</small>`;
-  }
-  function draw() {
-    ctx.clearRect(0, 0, W, H);
-    ctx.fillStyle = "#18304a"; ctx.fillRect(0, 0, W, H);
-    drawGrid(); drawTrack(); obstacles.forEach(drawObstacle); cars.slice().sort((a, b) => a.y - b.y).forEach(drawCar);
-    animation = requestAnimationFrame(loop);
-  }
-  function drawGrid() {
-    ctx.strokeStyle = "#24405a"; ctx.lineWidth = 1;
-    for (let x = 0; x < W; x += 32) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke(); }
-    for (let y = 0; y < H; y += 32) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke(); }
-  }
-  function oval(fill, rx, ry, line, width = 1) {
-    ctx.beginPath(); ctx.ellipse(track.cx, track.cy, rx, ry, 0, 0, Math.PI * 2); ctx.fillStyle = fill; ctx.fill();
-    if (line) { ctx.strokeStyle = line; ctx.lineWidth = width; ctx.stroke(); }
-  }
-  function drawTrack() {
-    oval("#101521", track.rx + 73, track.ry + 73);
-    oval("#2f3540", track.rx + 58, track.ry + 58);
-    oval("#111725", track.rx - 54, track.ry - 54);
-    ctx.setLineDash([12, 14]); oval("transparent", track.rx + 2, track.ry + 2, "#f5d774", 3); ctx.setLineDash([]);
-    ctx.strokeStyle = "#dfe7ef"; ctx.lineWidth = 4; ctx.beginPath(); ctx.moveTo(track.cx - 6, track.cy - track.ry - 55); ctx.lineTo(track.cx + 24, track.cy - track.ry - 55); ctx.stroke();
-    for (let i = 0; i < 6; i++) { ctx.fillStyle = i % 2 ? "#172033" : "#f4f4e9"; ctx.fillRect(track.cx - 6 + i * 5, track.cy - track.ry - 61, 5, 12); }
-  }
-  function drawObstacle(obstacle) {
-    ctx.save(); ctx.translate(obstacle.x, obstacle.y); ctx.rotate(obstacle.angle + Math.PI / 2);
-    ctx.fillStyle = obstacle.hit ? "#fff" : "#ff9d38"; ctx.beginPath(); ctx.moveTo(0, -13); ctx.lineTo(11, 12); ctx.lineTo(-11, 12); ctx.closePath(); ctx.fill();
-    ctx.fillStyle = "#fff1bd"; ctx.fillRect(-6, 1, 12, 4); ctx.restore();
-  }
-  function drawCar(car) {
-    ctx.save(); ctx.translate(car.x, car.y); ctx.rotate(car.angle);
-    ctx.shadowColor = "#0008"; ctx.shadowBlur = 10; ctx.shadowOffsetY = 4;
-    ctx.fillStyle = car.color; ctx.beginPath(); ctx.roundRect(-10, -19, 20, 38, 6); ctx.fill();
-    ctx.shadowColor = "transparent"; ctx.fillStyle = "#b9d1df"; ctx.beginPath(); ctx.roundRect(-7, -11, 14, 11, 3); ctx.fill();
-    ctx.fillStyle = "#20334c"; ctx.fillRect(-7, 4, 14, 7);
-    ctx.fillStyle = "#f4f5d5"; ctx.fillRect(-7, -18, 5, 3); ctx.fillRect(2, -18, 5, 3);
-    ctx.restore();
-  }
-  function loop(now) { const dt = Math.min(.05, (now - last) / 1000); last = now; update(dt); draw(); }
-  function begin() { cancelAnimationFrame(animation); reset(); startCountdown(); animation = requestAnimationFrame(loop); }
-  ui.modes.forEach(button => button.addEventListener("click", () => {
-    ui.modes.forEach(item => item.classList.toggle("active", item === button)); mode = button.dataset.mode; begin();
-  }));
-  ui.restart.addEventListener("click", begin);
-  ui.pause.addEventListener("click", () => { if (!running) return; paused = !paused; ui.pause.textContent = paused ? "▶" : "Ⅱ"; });
-  ui.sound.addEventListener("click", () => { soundOn = !soundOn; ui.sound.textContent = soundOn ? "🔊" : "🔇"; });
-  window.addEventListener("keydown", event => {
-    const key = event.key.length === 1 ? event.key.toLowerCase() : event.key;
-    if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", " ", "w", "a", "s", "d"].includes(key)) { event.preventDefault(); keys.add(key); }
-    if (key === "p") ui.pause.click();
-  });
-  window.addEventListener("keyup", event => keys.delete(event.key.length === 1 ? event.key.toLowerCase() : event.key));
-  document.querySelectorAll(".touch-button").forEach(button => {
-    const key = button.dataset.key;
-    const press = event => {
-      event.preventDefault();
-      keys.add(key);
-      button.classList.add("pressed");
-    };
-    const release = event => {
-      event.preventDefault();
-      keys.delete(key);
-      button.classList.remove("pressed");
-    };
-    button.addEventListener("pointerdown", press);
-    button.addEventListener("pointerup", release);
-    button.addEventListener("pointercancel", release);
-    button.addEventListener("pointerleave", release);
-  });
-  begin();
+  const $ = id => document.querySelector(id), canvas = $("#gameCanvas"), ctx = canvas.getContext("2d");
+  const W=canvas.width,H=canvas.height, track={cx:W/2,cy:H/2+8,rx:320,ry:205}, keys=new Set();
+  const ui={welcome:$("#welcomeScreen"),shell:$("#gameShell"),setup:$("#setupPanel"),hud:$("#hud"),canvas,lap:$("#lapValue"),pos:$("#positionValue"),time:$("#timeValue"),boost:$("#boostBar"),count:$("#countdown"),message:$("#message"),pause:$("#pauseBtn"),sound:$("#soundBtn"),status:$("#statusText")};
+  const settings={mode:"race",theme:"day",difficulty:"normal",laps:3}; let player,cars=[],obstacles=[],particles=[],running=false,paused=false,elapsed=0,last=0,raf,muted=false,countTimer;
+  const diff={easy:{ai:.72,turn:1.8},normal:{ai:.9,turn:2},hard:{ai:1.08,turn:2.2}};
+  const theme={day:{sky:"#63b7dd",ground:"#4a9d57",road:"#383d45",edge:"#e2d38a",inner:"#2f7042"},night:{sky:"#10182f",ground:"#172945",road:"#29313e",edge:"#6dd2dc",inner:"#101b2c"},desert:{sky:"#efa45f",ground:"#c98546",road:"#55433d",edge:"#f3d37e",inner:"#b56e3d"}};
+  const point=(a,l=0)=>({x:track.cx+(track.rx+l)*Math.cos(a),y:track.cy+(track.ry+l*.64)*Math.sin(a)});
+  const angleOf=c=>Math.atan2((c.y-track.cy)/track.ry,(c.x-track.cx)/track.rx);
+  const progress=c=>{let a=angleOf(c);if(a<-.5*Math.PI)a+=Math.PI*2;return a};
+  const fmt=ms=>{const s=ms/1000;return `${String(Math.floor(s/60)).padStart(2,"0")}:${(s%60).toFixed(1).padStart(4,"0")}`};
+  function car(color,a,l,ai=false){const p=point(a,l);return{x:p.x,y:p.y,angle:a+Math.PI/2,color,l,ai,speed:ai?90:0,lap:0,last:0,boost:100,hit:0}};
+  function reset(){const colors=["#45d9e8","#ff587b","#a56cff","#f3e85e","#66e18c"];player=car(colors[0],-Math.PI/2,0);cars=[player,...colors.slice(1).map((c,i)=>car(c,-Math.PI/2-(i+1)*.19,i%2?-26:26,true))];obstacles=settings.mode==="training"?[-1.2,-.55,.1,.78,1.55,2.3,2.85].map((a,i)=>({...point(a,i%2?28:-28),a,hit:0})):[];particles=[];elapsed=0;running=false;paused=false;ui.message.hidden=true;ui.hud.hidden=false;updateHud();draw();startCountdown()}
+  function startCountdown(){clearTimeout(countTimer);let n=3;ui.count.hidden=false;const tick=()=>{ui.count.textContent=n>0?n:"انطلق!";if(n<0){ui.count.hidden=true;running=true;last=performance.now();return}n--;countTimer=setTimeout(tick,650)};tick()}
+  function updateHud(){ui.lap.textContent=settings.mode==="race"?`${Math.min(settings.laps,player.lap+1)} / ${settings.laps}`:"تدريب";const sorted=[...cars].sort((a,b)=>(b.lap*6.28+progress(b))-(a.lap*6.28+progress(a)));ui.pos.textContent=settings.mode==="race"?`${sorted.indexOf(player)+1} / 5`:"—";ui.time.textContent=fmt(elapsed);ui.boost.style.width=`${player?.boost??100}%`}
+  function update(dt){if(!running||paused)return;elapsed+=dt*1000;const up=keys.has("ArrowUp")||keys.has("w"),down=keys.has("ArrowDown")||keys.has("s"),turn=(keys.has("ArrowLeft")||keys.has("a")?-1:0)+(keys.has("ArrowRight")||keys.has("d")?1:0),nitro=keys.has(" ")&&player.boost>0&&up;const target=up?(nitro?285:205):down?-80:0;player.speed+=(target-player.speed)*Math.min(1,dt*4);player.boost=nitro?Math.max(0,player.boost-dt*28):Math.min(100,player.boost+dt*6);player.angle+=turn*dt*(diff[settings.difficulty].turn+Math.abs(player.speed)/190);player.x+=Math.cos(player.angle-Math.PI/2)*player.speed*dt;player.y+=Math.sin(player.angle-Math.PI/2)*player.speed*dt;keep(player);moveAi(dt);if(settings.mode==="training")obstacles.forEach(o=>{if(Math.hypot(player.x-o.x,player.y-o.y)<28){player.speed*=.42;player.boost=Math.max(0,player.boost-15);o.hit=1;burst(player.x,player.y,"#ffb13b")}});checkLap(player);particles.forEach(p=>{p.x+=p.vx*dt;p.y+=p.vy*dt;p.life-=dt});particles=particles.filter(p=>p.life>0);updateHud()}
+  function keep(c){const d=Math.hypot((c.x-track.cx)/track.rx,(c.y-track.cy)/track.ry);if(d>1.13){c.speed*=.72;c.x-=Math.cos(c.angle-Math.PI/2)*3;c.y-=Math.sin(c.angle-Math.PI/2)*3}}
+  function moveAi(dt){cars.slice(1).forEach(c=>{const a=angleOf(c)+c.speed*diff[settings.difficulty].ai/track.rx*dt,p=point(a,c.l);c.x=p.x;c.y=p.y;c.angle=a+Math.PI/2;checkLap(c)})}
+  function checkLap(c){const p=progress(c);if(c.last>5&&p<1)c.lap++;c.last=p;if(c===player&&settings.mode==="race"&&c.lap>=settings.laps){running=false;ui.message.innerHTML=`🏁 أحسنت يا بطل!<small>المركز ${[...cars].sort((a,b)=>(b.lap*6.28+progress(b))-(a.lap*6.28+progress(a))).indexOf(player)+1} — ${fmt(elapsed)}</small>`;ui.message.hidden=false}}
+  function burst(x,y,color){for(let i=0;i<10;i++)particles.push({x,y,vx:(Math.random()-.5)*100,vy:(Math.random()-.5)*100,life:.5,color})}
+  function draw(){const t=theme[settings.theme];ctx.fillStyle=t.sky;ctx.fillRect(0,0,W,H);ctx.fillStyle=t.ground;ctx.fillRect(0,H*.42,W,H*.58);if(settings.theme==="desert"){ctx.fillStyle="#e8b264";for(let i=0;i<18;i++)ctx.arc((i*73)%W,90+(i%4)*35,18,0,Math.PI*2);ctx.fill()}drawOval("#15202b",track.rx+78,track.ry+78);drawOval(t.road,track.rx+60,track.ry+60);drawOval(t.inner,track.rx-55,track.ry-55);ctx.setLineDash([14,12]);drawOval("transparent",track.rx+3,track.ry+3,t.edge,3);ctx.setLineDash([]);ctx.strokeStyle="#fff";ctx.lineWidth=5;ctx.beginPath();ctx.moveTo(track.cx-12,track.cy-track.ry-59);ctx.lineTo(track.cx+32,track.cy-track.ry-59);ctx.stroke();for(let i=0;i<8;i++){ctx.fillStyle=i%2?"#222b3b":"#fff";ctx.fillRect(track.cx-12+i*5,track.cy-track.ry-66,5,14)}obstacles.forEach(drawObstacle);cars.slice().sort((a,b)=>a.y-b.y).forEach(drawCar);particles.forEach(p=>{ctx.globalAlpha=Math.max(0,p.life*2);ctx.fillStyle=p.color;ctx.beginPath();ctx.arc(p.x,p.y,3,0,Math.PI*2);ctx.fill();ctx.globalAlpha=1})}
+  function drawOval(fill,rx,ry,line,width=1){ctx.beginPath();ctx.ellipse(track.cx,track.cy,rx,ry,0,0,Math.PI*2);ctx.fillStyle=fill;ctx.fill();if(line){ctx.strokeStyle=line;ctx.lineWidth=width;ctx.stroke()}}
+  function drawCar(c){ctx.save();ctx.translate(c.x,c.y);ctx.rotate(c.angle);ctx.shadowColor="#0009";ctx.shadowBlur=10;ctx.fillStyle=c.color;ctx.beginPath();ctx.roundRect(-11,-20,22,40,7);ctx.fill();ctx.shadowColor="transparent";ctx.fillStyle="#bfe0e8";ctx.beginPath();ctx.roundRect(-7,-12,14,12,3);ctx.fill();ctx.fillStyle="#20334c";ctx.fillRect(-8,4,16,8);ctx.fillStyle="#fff5c4";ctx.fillRect(-7,-19,5,3);ctx.fillRect(2,-19,5,3);ctx.restore()}
+  function drawObstacle(o){ctx.save();ctx.translate(o.x,o.y);ctx.rotate(o.a+Math.PI/2);ctx.fillStyle=o.hit?"#fff":"#ff9d38";ctx.beginPath();ctx.moveTo(0,-14);ctx.lineTo(12,13);ctx.lineTo(-12,13);ctx.closePath();ctx.fill();ctx.fillStyle="#fff";ctx.fillRect(-7,1,14,4);ctx.restore()}
+  function loop(now){const dt=Math.min(.05,(now-last)/1000);last=now;update(dt);draw();raf=requestAnimationFrame(loop)}
+  function start(){ui.setup.hidden=true;reset();cancelAnimationFrame(raf);raf=requestAnimationFrame(loop);ui.status.textContent=settings.mode==="training"?"تدريب: تجاوز كل الحواجز":"السباق بدأ — دوس بنزين!"}
+  document.querySelectorAll(".theme-choices .choice").forEach(b=>b.onclick=()=>{document.querySelectorAll(".theme-choices .choice").forEach(x=>x.classList.remove("active"));b.classList.add("active");settings.theme=b.dataset.theme});
+  document.querySelectorAll("[data-mode]").forEach(b=>b.onclick=()=>{document.querySelectorAll("[data-mode]").forEach(x=>x.classList.remove("active"));b.classList.add("active");settings.mode=b.dataset.mode});
+  document.querySelectorAll("[data-difficulty]").forEach(b=>b.onclick=()=>{document.querySelectorAll("[data-difficulty]").forEach(x=>x.classList.remove("active"));b.classList.add("active");settings.difficulty=b.dataset.difficulty});
+  document.querySelectorAll("[data-laps]").forEach(b=>b.onclick=()=>{document.querySelectorAll("[data-laps]").forEach(x=>x.classList.remove("active"));b.classList.add("active");settings.laps=Number(b.dataset.laps)});
+  $("#enterGameBtn").onclick=()=>{ui.welcome.hidden=true;ui.welcome.style.display="none";ui.shell.hidden=false};
+  $("#startBtn").onclick=start;$("#backBtn").onclick=()=>{running=false;ui.setup.hidden=false;ui.hud.hidden=true};$("#pauseBtn").onclick=()=>{paused=!paused;ui.pause.textContent=paused?"▶":"Ⅱ"};$("#soundBtn").onclick=()=>{muted=!muted;ui.sound.textContent=muted?"🔇":"🔊"};$("#fullscreenBtn").onclick=()=>document.documentElement.requestFullscreen?.();
+  addEventListener("keydown",e=>{const k=e.key.length===1?e.key.toLowerCase():e.key;if(["ArrowUp","ArrowDown","ArrowLeft","ArrowRight"," ","w","a","s","d"].includes(k)){e.preventDefault();keys.add(k)}if(k==="p")ui.pause.click()});addEventListener("keyup",e=>keys.delete(e.key.length===1?e.key.toLowerCase():e.key));
+  document.querySelectorAll(".touch-button").forEach(b=>{const k=b.dataset.key;const on=e=>{e.preventDefault();keys.add(k);b.classList.add("pressed")},off=e=>{e.preventDefault();keys.delete(k);b.classList.remove("pressed")};b.addEventListener("pointerdown",on);b.addEventListener("pointerup",off);b.addEventListener("pointercancel",off);b.addEventListener("pointerleave",off)});
+  addEventListener("deviceorientation",e=>{if(Math.abs(e.gamma||0)>10){keys.delete("ArrowLeft");keys.delete("ArrowRight");keys.add(e.gamma>0?"ArrowRight":"ArrowLeft")}});ui.shell.hidden=true;draw();
 })();
